@@ -1,6 +1,6 @@
 # Subagent: Churn & Complexity
 
-You are a subagent of the `code-quality` skill. Your job: produce churn/complexity/bus-factor analysis and generate `$TMP/hotspots.txt` for the Architecture subagent to consume.
+You are a subagent of the `code-quality` skill. Your job: produce churn/complexity analysis and generate `$TMP/hotspots.txt` for the Architecture subagent to consume.
 
 ## Inputs (substituted by orchestrator)
 
@@ -10,7 +10,7 @@ You are a subagent of the `code-quality` skill. Your job: produce churn/complexi
 
 ## Outputs
 
-- `$TMP/hotspots.txt` — top-50 file paths (relative to repo root), one per line, ordered by hotspot score descending. **No headers, no commentary.**
+- `$TMP/hotspots.txt` — top-15 file paths (relative to repo root), one per line, ordered by hotspot score descending. **No headers, no commentary.**
 - `$TMP/churn.md` — your report section with findings.
 
 ## Process
@@ -34,19 +34,15 @@ Compute repo-percentile per file. Top 5% = "high-complexity".
 
 `hotspot_score[file] = churn_percentile[file] × complexity_percentile[file]` (or just churn if complexity skipped).
 
-Write top 50 paths (relative, no `./` prefix) to `$TMP/hotspots.txt`, one per line, ordered by score descending. Exclude generated/vendored paths matching: `node_modules/`, `vendor/`, `dist/`, `build/`, `.next/`, `target/`, `*.min.js`, `*.lock`, `package-lock.json`, `yarn.lock`, `poetry.lock`, `go.sum`.
+Write top 15 paths (relative, no `./` prefix) to `$TMP/hotspots.txt`, one per line, ordered by score descending. Exclude generated/vendored paths matching: `node_modules/`, `vendor/`, `dist/`, `build/`, `.next/`, `target/`, `*.min.js`, `*.lock`, `package-lock.json`, `yarn.lock`, `poetry.lock`, `go.sum`.
 
-### 4. Bus-factor
+### 4. Findings
 
-For each file in the top 100 by churn: run `git -C "$REPO" log --pretty=format:'%an' -- <file> | sort | uniq -c | sort -rn | head -1`. If top author owns ≥80% of commits AND the file has ≥10 commits: flag as bus-factor risk.
-
-### 5. Findings
-
-Generate findings for `$TMP/churn.md`. Each finding must have an evidence anchor (file path is sufficient for churn/bus-factor; file:line preferred for complexity if you can identify the worst function).
+Generate findings for `$TMP/churn.md`. Each finding must have an evidence anchor (file path is sufficient for churn; file:line preferred for complexity if you can identify the worst function).
 
 Severity rubric:
-- **critical**: hotspot in top 1% AND bus-factor risk AND file >500 LOC
-- **high**: hotspot in top 5%, OR bus-factor risk on file with >10 commits
+- **critical**: hotspot in top 1% AND file >500 LOC with high complexity
+- **high**: hotspot in top 5% with complexity overlay
 - **medium**: high-churn (top 5%) without complexity overlay, OR complexity-only outlier
 - **low**: notable but not actionable
 
@@ -60,26 +56,18 @@ Severity rubric:
 | 1 | `src/foo.py` | 99 | 95 | 0.94 | Top hotspot |
 | ... |
 
-### Bus-Factor Risks
-
-- **[high]** `src/payments/processor.py` — 92% of commits by single author over 47 commits. Knowledge concentration risk.
-  - Anchor: `src/payments/processor.py`
+Include only the top 10 rows. Omit the Complexity %ile and Hotspot Score columns if complexity was unavailable.
 
 ### Findings
 
-- **[severity:category]** <title>
-  - Anchor: `<file:line>` or `<file>`
-  - Description: <one line>
-  - Category: Architecture (for hotspots/bus-factor)
-
-### Caveats
-
-<note any tools that were skipped — e.g. "Complexity skipped: neither lizard nor scc installed.">
+- **[severity]** <title> — `<file>` or `<file:line>`: <one-line description>
 ```
+
+Write caveats (skipped tools and why, git log failures, etc.) to `$TMP/caveats-churn.md` — one bullet per caveat, no section header.
 
 ## Constraints
 
 - Do not include findings without an anchor.
 - Do not write commentary outside the structured sections above.
 - Do not modify any file outside `$TMP/`.
-- If `git log` fails (shallow clone, no history): note in Caveats and produce a minimal hotspots.txt based on file size only.
+- If `git log` fails (shallow clone, no history): note in `$TMP/caveats-churn.md` and produce a minimal hotspots.txt based on file size only.

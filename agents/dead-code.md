@@ -20,7 +20,7 @@ jscpd "$REPO" --reporters json --output "$TMP/jscpd/" --silent --gitignore
 ```
 Parse `$TMP/jscpd/jscpd-report.json`. Report clones of ≥30 lines or ≥3 instances. Each clone → finding with `file:LINE-LINE` anchor (use the first instance, list others in description).
 
-If `jscpd` missing: skip, note in Caveats.
+If `jscpd` missing: skip, note in `$TMP/caveats-dead-code.md`.
 
 ### 2. Per-language dead code
 
@@ -32,9 +32,8 @@ Run only the tools that `$PREFLIGHT` reports as available. For each, the LLM fil
 | TS/JS | `knip` (alt) | `cd "$REPO" && knip --reporter json` |
 | Python | `vulture` | `vulture "$REPO" --min-confidence 70` |
 | Go | `deadcode` | `cd "$REPO" && deadcode ./...` |
-| Java/Kotlin | `detekt` (UnusedPrivateMember etc) | `detekt -i "$REPO"` |
-| PHP | `phpstan` (with deadCode rules) | `phpstan analyse "$REPO"` |
-| Swift | `periphery` | `periphery scan --project ...` |
+| Java | `pmd` (with UnusedPrivateField/Method rules) | `pmd check -d "$REPO" -R rulesets/java/quickstart.xml` |
+| Kotlin | `detekt` (UnusedPrivateMember etc) | `detekt -i "$REPO"` |
 
 ### 3. LLM false-positive filter
 
@@ -49,7 +48,12 @@ Drop these. Keep findings that clearly look like leftover code.
 
 ### 4. CFN unused parameters/outputs
 
-For each CFN template identified in the inventory (read from `$TMP/architecture.md` if available; otherwise re-detect):
+Detect CFN templates independently:
+```bash
+find "$REPO" \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) -exec grep -l "AWSTemplateFormatVersion\|\"Resources\"" {} \; 2>/dev/null
+```
+
+For each CFN template found:
 - For each `Parameters:` entry: grep the rest of the template for `!Ref <name>`, `${<name>}`, `Fn::Ref: <name>`. If 0 references: flag as unused parameter.
 - For each `Outputs:` entry: grep all OTHER CFN templates and any IaC orchestration files for the output name. If 0 references: flag as unused output (low-confidence — outputs may be consumed externally).
 
@@ -74,27 +78,28 @@ Severity rubric:
 |-------|-----------|--------------|-----------------|
 | 142 | 4 | `src/foo.ts:10-152` | `src/bar.ts:8`, `src/baz.ts:200`, ... |
 
+Omit this section if no duplicates found.
+
 ### Dead Code (post-filter)
 
-- **[severity:Maintenance]** <title>
-  - Anchor: `path/to/file.ext:LINE`
-  - Description: <one line>
+- **[severity]** <title> — `path/to/file.ext:LINE`: <one-line description>
+
+Omit this section if no findings after filtering.
 
 ### Unused CFN Parameters/Outputs
 
-- **[medium:Maintenance]** Unused parameter `Foo` in `infra/api.yaml`
-  - Anchor: `infra/api.yaml:12`
+- **[medium]** Unused parameter `Foo` — `infra/api.yaml:12`
+
+Omit this section if no CFN templates or no unused params/outputs.
 
 ### Orphan YAML Candidates
 
-- **[low:Hygiene]** `config/legacy.yaml` — no references found in source/scripts/CI
-  - Anchor: `config/legacy.yaml`
-  - Description: Low-confidence; may be loaded via env-var path.
+- **[low]** `config/legacy.yaml` — no references found in source/scripts/CI (may be loaded via env-var path)
 
-### Caveats
-
-<list skipped tools and why>
+Omit this section if no orphan candidates.
 ```
+
+Write caveats (skipped tools and why) to `$TMP/caveats-dead-code.md` — one bullet per caveat, no section header.
 
 ## Constraints
 
@@ -102,3 +107,4 @@ Severity rubric:
 - Orphan YAML and unused CFN outputs are always low-confidence.
 - Do not include false positives that the filter step caught.
 - Do not modify any file outside `$TMP/`.
+- Omit any subsection that has no content.

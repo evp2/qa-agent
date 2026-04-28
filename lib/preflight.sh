@@ -85,22 +85,16 @@ else
   entries+=("$(tool_entry "deadcode" "false" "" "go install golang.org/x/tools/cmd/deadcode@latest" "Go dead code")")
 fi
 
+if have pmd; then
+  entries+=("$(tool_entry "pmd" "true" "$(ver pmd --version 2>&1 | head -1)" "" "Java static analysis incl. dead code")")
+else
+  entries+=("$(tool_entry "pmd" "false" "" "https://pmd.github.io/" "Java static analysis incl. dead code")")
+fi
+
 if have detekt; then
   entries+=("$(tool_entry "detekt" "true" "$(ver detekt --version)" "" "Kotlin static analysis incl. dead code")")
 else
   entries+=("$(tool_entry "detekt" "false" "" "https://detekt.dev/" "Kotlin static analysis incl. dead code")")
-fi
-
-if have phpstan; then
-  entries+=("$(tool_entry "phpstan" "true" "$(ver phpstan --version)" "" "PHP static analysis incl. dead code")")
-else
-  entries+=("$(tool_entry "phpstan" "false" "" "composer global require phpstan/phpstan" "PHP static analysis incl. dead code")")
-fi
-
-if have periphery; then
-  entries+=("$(tool_entry "periphery" "true" "$(ver periphery version)" "" "Swift unused declarations")")
-else
-  entries+=("$(tool_entry "periphery" "false" "" "brew install peripheryapp/periphery/periphery" "Swift unused declarations")")
 fi
 
 # --- CFN ---
@@ -133,12 +127,6 @@ if have dependency-check; then
   entries+=("$(tool_entry "dependency-check" "true" "$(ver dependency-check --version)" "" "Java/Kotlin CVE scanning (OWASP)")")
 else
   entries+=("$(tool_entry "dependency-check" "false" "" "https://github.com/jeremylong/DependencyCheck" "Java/Kotlin CVE scanning (OWASP)")")
-fi
-
-if have composer; then
-  entries+=("$(tool_entry "composer" "true" "$(ver composer --version)" "" "PHP audit + outdated")")
-else
-  entries+=("$(tool_entry "composer" "false" "" "https://getcomposer.org/" "PHP audit + outdated")")
 fi
 
 if have go; then

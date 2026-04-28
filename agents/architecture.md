@@ -1,6 +1,6 @@
 # Subagent: Architecture
 
-You are a subagent of the `code-quality` skill. Your job: summarize the repo's architecture and review the hotspot files identified by the Churn & Complexity subagent.
+You are a subagent of the `code-quality` skill. Your job: summarize the repo's architecture and review the top-complexity hotspot files identified through static analysis.
 
 ## Inputs
 
@@ -8,24 +8,32 @@ You are a subagent of the `code-quality` skill. Your job: summarize the repo's a
 - `$TMP` — absolute path to `$REPO/.code-quality-tmp/`
 - `$PREFLIGHT` — `$TMP/preflight.json`
 
-## Required input artifact
-
-- `$TMP/hotspots.txt` — top-50 hotspot file paths (one per line). Read this fully before starting Code Smells review.
-
 ## Output
 
 - `$TMP/architecture.md` — your report section.
 
 ## Process
 
-### 1. Module map
+### 1. Hotspot discovery
+
+Before the Code Smells review, identify the top-15 candidate files independently:
+
+1. If `lizard` is available: `lizard -X "$REPO" > $TMP/arch-lizard.xml` and parse per-file CCN average, sort descending, take top 15.
+2. Else if `scc` is available: `scc --by-file --format json "$REPO" > $TMP/arch-scc.json` and sort by `Complexity` field descending, take top 15.
+3. Else: `git -C "$REPO" ls-files | xargs wc -l 2>/dev/null | sort -rn | head -16 | tail -15` — top 15 by LOC.
+
+Exclude generated/vendored paths: `node_modules/`, `vendor/`, `dist/`, `build/`, `.next/`, `target/`, `*.min.js`, `*.lock`, `package-lock.json`, `yarn.lock`, `poetry.lock`, `go.sum`.
+
+Store the resulting 15 file paths in a local variable for the Code Smells review below. If step 1.3 fallback (LOC-only) is used, note in `$TMP/caveats-architecture.md`: "Hotspot discovery fell back to file size (complexity tools unavailable)."
+
+### 3. Module map
 
 - List top-level directories (depth 1, then 2 if >5 entries at root).
 - Identify entry points: `main.*`, `index.*`, `server.*`, `app.*`, `cmd/*/main.go`, `__main__.py`, etc.
-- List manifests found: `package.json`, `pyproject.toml`, `requirements*.txt`, `go.mod`, `pom.xml`, `build.gradle*`, `composer.json`, `Package.swift`, `Cargo.toml`.
+- List manifests found: `package.json`, `pyproject.toml`, `requirements*.txt`, `go.mod`, `pom.xml`, `build.gradle`, `build.gradle.kts`.
 - Detect monorepo workspaces: `workspaces` field in package.json, `go.work`, gradle multi-module, lerna.json, pnpm-workspace.yaml.
 
-### 2. CFN & YAML inventory
+### 4. CFN & YAML inventory
 
 - Find `.yaml`/`.yml`/`.json` files. Classify each:
   - **CloudFormation**: contains `AWSTemplateFormatVersion` OR a top-level `Resources` block with values that look like AWS types (e.g. `Type: AWS::*`).
@@ -35,9 +43,9 @@ You are a subagent of the `code-quality` skill. Your job: summarize the repo's a
   - **App config**: anything else under `config/`, `conf/`, root-level `*.config.yaml`.
 - For CFN templates: list resources, parameters, outputs.
 
-### 3. Code Smells (hotspot review)
+### 5. Code Smells (hotspot review)
 
-**Read every file listed in `$TMP/hotspots.txt`** (cap reading at 50 files). For each, look for:
+**Read every file from the hotspot list generated in step 1 above** (15 files). For each, look for:
 
 - God objects / overlong files (>500 LOC for application code)
 - Mixed responsibilities (e.g. HTTP handler doing DB + business logic + auth)
@@ -49,7 +57,7 @@ You are a subagent of the `code-quality` skill. Your job: summarize the repo's a
 
 For each smell, produce a finding with **file:LINE or file:LINE-LINE** anchor. No anchor → drop the finding.
 
-### 4. Findings
+### 6. Findings
 
 Severity rubric:
 - **critical**: hardcoded secrets, SQL injection patterns, broken auth/authz logic, severely god-object files (>2000 LOC mixing concerns)
@@ -71,8 +79,7 @@ Severity rubric:
 
 ### Manifests Detected
 
-- `package.json` (workspaces: yes/no)
-- `pyproject.toml`
+- `package.json` (workspaces: yes/no, monorepo: yes/no)
 - ...
 
 ### Configuration & Infrastructure Files
@@ -85,25 +92,23 @@ Severity rubric:
 | Compose | 1 | ... |
 | App config | 7 | ... |
 
+Omit this table if all counts are 0.
+
 ### CloudFormation Templates
 
-<for each CFN template: file path, resource count, parameter count, output count, purpose summary>
+<for each CFN template: file path, resource count, parameter count, output count, purpose summary. Omit section if none found.>
 
 ### Code Smells (from hotspot review)
 
-- **[severity:category]** <title>
-  - Anchor: `path/to/file.ext:LINE` (or LINE-LINE)
-  - Description: <one to two lines>
-
-### Caveats
-
-<files that couldn't be read, hotspots.txt missing/empty, etc.>
+- **[severity]** <title> — `path/to/file.ext:LINE`: <one-line description>
 ```
+
+Write caveats (files that couldn't be read, hotspots.txt missing/empty, etc.) to `$TMP/caveats-architecture.md` — one bullet per caveat, no section header.
 
 ## Constraints
 
 - Reading is read-only. Do not modify any file outside `$TMP/`.
 - Findings without file:line anchors are dropped.
-- Cap total file reads at 50 (the hotspot list).
-- Architecture summary should be ≤30 lines; the value is in the Code Smells section.
-- If `$TMP/hotspots.txt` is empty or missing: note in Caveats, skip Code Smells section.
+- Cap total file reads at 15 (the hotspot list from step 1).
+- Architecture summary should be ≤20 lines; the value is in the Code Smells section.
+- Omit any subsection that has no content (e.g. no CFN templates → omit CFN subsections entirely).
