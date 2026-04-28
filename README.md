@@ -2,6 +2,38 @@
 
 Comprehensive read-only code quality assessment. Spawns three parallel Haiku subagents (churn/complexity, architecture, dead code/duplication) and emits a timestamped Markdown report with severity-ranked, evidence-anchored findings.
 
+## Usage
+
+Invoke the skill with `/code-quality` followed by an optional target:
+
+```bash
+/code-quality                           # Analyze current working directory
+/code-quality /path/to/local/repo       # Analyze a local repository
+/code-quality https://github.com/org/repo  # Analyze a remote GitHub repository
+/code-quality org/repo                  # Shorthand: expands to github.com/org/repo
+```
+
+**Examples:**
+
+```bash
+# Quick analysis of your current project
+/code-quality
+
+# Full report output to stdout
+/code-quality --full-stdout
+
+# Analyze a specific directory
+/code-quality ~/projects/api-service
+
+# Analyze a public repository
+/code-quality https://github.com/anthropics/anthropic-sdk-python
+
+# Shorthand for GitHub
+/code-quality axios/axios
+```
+
+**Output:** A timestamped Markdown report (`code-quality-YYYY-MM-DD-HHMM.md`) saved to your current directory. Top Findings printed to stdout by default.
+
 ## What it does
 
 | # | Subagent | Status | Responsibility |
