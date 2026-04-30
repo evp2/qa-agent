@@ -1,86 +1,109 @@
 # code-quality — Claude Code skill
 
-Comprehensive read-only code quality assessment. Spawns three parallel Haiku subagents (churn/complexity, architecture, dead code/duplication) and emits a timestamped Markdown report with severity-ranked, evidence-anchored findings.
+> Get a full code quality report on any project in under 6 minutes — no config, 3 parallel Haiku subagents.
+
+Three parallel AI subagents tear through your codebase simultaneously: one maps churn hotspots, one audits architecture, one hunts dead code. The result is a timestamped Markdown report with severity-ranked findings, every one anchored to a file and line number.
+
+---
+
+## Demo
+
+```
+## Top Findings
+
+### Architecture
+- **[high]** `src/api/routes.js:1-312` — monolithic route file, 312 lines, 18 exported handlers. Extract into feature modules.
+- **[high]** `lib/db.js:44` — circular dependency: db → cache → db. Breaks test isolation.
+
+### Maintenance
+- **[medium]** `src/utils/format.ts:12-67` — duplicated in `src/helpers/display.ts:8-61` (87% similarity via jscpd)
+- **[medium]** `workers/legacy.py` — 0 references found; appears unreachable since commit a3f9c2b
+
+### Churn Hotspots
+- **[high]** `src/auth/middleware.js` — top 5% churn, cyclomatic complexity 24. High bus-factor risk (1 author, 89% of commits).
+```
+
+*Full report saved to `./code-quality-2026-04-30-1142.md`*
+
+---
 
 ## Usage
 
-Invoke the skill with `/code-quality` followed by an optional target:
-
 ```bash
-/code-quality                           # Analyze current working directory
-/code-quality /path/to/local/repo       # Analyze a local repository
+/code-quality                              # Analyze current working directory
+/code-quality /path/to/local/repo          # Analyze a local repository
 /code-quality https://github.com/org/repo  # Analyze a remote GitHub repository
-/code-quality org/repo                  # Shorthand: expands to github.com/org/repo
-```
-
-**Examples:**
-
-```bash
-# Quick analysis of your current project
-/code-quality
-
-# Full report output to stdout
-/code-quality --full-stdout
-
-# Analyze a specific directory
-/code-quality ~/projects/api-service
-
-# Analyze a public repository
-/code-quality https://github.com/anthropics/anthropic-sdk-python
-
-# Shorthand for GitHub
-/code-quality axios/axios
+/code-quality org/repo                     # Shorthand for GitHub repos
 ```
 
 **Output:** A timestamped Markdown report (`code-quality-YYYY-MM-DD-HHMM.md`) saved to your current directory. Top Findings printed to stdout by default.
 
+Optional flag: `--full-stdout` — print the full report to stdout instead of just Top Findings.
+
+---
+
 ## What it does
 
-| # | Subagent | Status | Responsibility |
-|---|----------|--------|----------------|
-| 1 | Churn & Complexity | **enabled** | Recency-weighted churn percentile × cyclomatic complexity → hotspot map. Bus-factor via `git blame`. |
-| 2 | Architecture | **enabled** | Module map, entry points, manifests, CFN/YAML inventory. Self-identifies top-15 complexity files independently and produces a Code Smells subsection with file:line anchors. |
-| 3 | Dead Code & Duplication | **enabled** | `jscpd` for clones, language-specific dead-code tools, unused CFN params/outputs, orphan YAML. LLM filter step removes obvious framework false-positives. |
+Three subagents run in parallel, each with a focused responsibility:
 
-## Invocation
+| Subagent | What it finds |
+|----------|---------------|
+| **Churn & Complexity** | Recency-weighted churn × cyclomatic complexity → hotspot map. Bus-factor risk via `git blame`. |
+| **Architecture** | Module map, entry points, dependency graph, CFN/YAML inventory. Code smells with `file:line` anchors. |
+| **Dead Code & Duplication** | Clone detection via `jscpd`, unused exports, orphan YAML, unused CloudFormation params. LLM filter removes framework false-positives. |
 
-```
-/code-quality                    # current working directory
-/code-quality <local-path>       # local repo path
-/code-quality <github-url>       # remote — clones via gh into /tmp/, cleaned on exit
-```
+Every finding includes an evidence anchor — a `file:line` location, a `package@version` from a manifest, or a command-output excerpt. Findings without anchors are dropped. Severity tiers: `critical` · `high` · `medium` · `low`.
 
-Optional flag: `--full-stdout` (also prints full report to stdout; default is Top Findings only).
-
-## Output
-
-- `./code-quality-YYYY-MM-DD-HHMM.md` (timestamped, in cwd)
-- Top Findings printed to stdout
+---
 
 ## Languages & formats
 
 TS/JS · Python · Go · Java · Kotlin · CloudFormation (YAML/JSON) · YAML config files
 
-## Tool requirements
+---
+
+## Install
+
+### Claude Code
+
+```bash
+mkdir -p ~/.claude/skills
+ln -s ~/code-quality-agent ~/.claude/skills/code-quality
+```
+
+### OpenClaw
+
+```bash
+ln -s ~/code-quality-agent ~/.npm-global/lib/node_modules/openclaw/skills/code-quality
+```
+
+After symlinking, `/code-quality` is available in your session.
+
+---
+
+<details>
+<summary>Tool requirements</summary>
 
 **Hard required:** `git`. `gh` is required only when passing a remote URL.
 
-**Optional (best-effort, skipped with note if missing):** `lizard`, `scc`, `jscpd`, `ts-prune`, `knip`, `vulture`, `deadcode`, `pmd`, `detekt`, `cfn-lint`, `npm`, `pip-audit`, `govulncheck`, `dependency-check` (OWASP), `go`, `mvn`, `gradle`. Run `bash lib/preflight.sh <repo>` to see what's detected.
+**Optional (best-effort, skipped with note if missing):** `lizard`, `scc`, `jscpd`, `ts-prune`, `knip`, `vulture`, `deadcode`, `pmd`, `detekt`, `cfn-lint`, `npm`, `pip-audit`, `govulncheck`, `dependency-check` (OWASP), `go`, `mvn`, `gradle`.
 
-## Findings & severity
+Run `bash lib/preflight.sh <repo>` to see what's detected in your environment.
 
-Every finding includes an evidence anchor — a `file:line` (or `file:line-line`) source location, a manifest path with `package@version`, or a ≤3-line command-output excerpt. Findings without anchors are dropped.
+</details>
 
-Severity tiers: `critical` · `high` · `medium` · `low`. Top Findings groups by category (Architecture → Maintenance) and ranks by severity within group. Findings deduped by file path; max severity wins.
+<details>
+<summary>Limitations</summary>
 
-## Disclosed limitations
-
-- Parallel execution; expect 2–6 min on medium repos (3 active subagents running concurrently).
+- Parallel execution; expect 2–6 min on medium repos.
 - Subagents run on Haiku for cost efficiency.
-- LLM-generated severities (architecture code smells, dead-code FP filter) are non-reproducible across runs.
+- LLM-generated severities are non-reproducible across runs.
 - CFN/YAML orphan-config detection is heuristic and capped at medium severity.
 
-## Layout
+</details>
+
+<details>
+<summary>Repo layout</summary>
 
 ```
 code-quality-agent/
@@ -95,25 +118,10 @@ code-quality-agent/
 └── README.md
 ```
 
-## Install
+</details>
 
-### OpenClaw
-
-```bash
-ln -s ~/code-quality-agent ~/.npm-global/lib/node_modules/openclaw/skills/code-quality
-```
-
-(Adjust the OpenClaw skills directory path to wherever your install lives.)
-
-### Claude Code
-
-```bash
-mkdir -p ~/.claude/skills
-ln -s ~/code-quality-agent ~/.claude/skills/code-quality
-```
-
-After symlinking, `/code-quality` is discoverable in both runtimes.
+---
 
 ## Permissions
 
-Read-only on the repo. Writes only to `./code-quality-*.md` (the report) and `<repo>/.code-quality-tmp/` (cleaned on exit). PR-comment posting is a future flag.
+Read-only on the repo. Writes only to `./code-quality-*.md` (the report) and `<repo>/.code-quality-tmp/` (cleaned on exit).
